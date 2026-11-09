@@ -21,11 +21,18 @@ def create_app():
 
 def main():
     app = create_app()
-    DATA.mkdir(parents=True, exist_ok=True)
+    try:
+        DATA.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        QMessageBox.warning(None, "QQ 音乐下载器", "无法创建本机数据目录。请完整解压到有写入权限的文件夹。")
+        return 1
     lock = QLockFile(str(DATA / "running.lock"))
     if not lock.tryLock(0):
-        QMessageBox.information(None, "QQ 音乐下载器", "程序已在运行。请切换到已打开的窗口。")
-        return 0
+        if lock.error() == QLockFile.LockError.LockFailedError:
+            QMessageBox.information(None, "QQ 音乐下载器", "程序已在运行。请切换到已打开的窗口。")
+            return 0
+        QMessageBox.warning(None, "QQ 音乐下载器", "无法写入本机数据目录。请选择有写入权限的解压位置。")
+        return 1
     storage = Storage()
     window = Window(storage, MusicService(storage))
     window.show()

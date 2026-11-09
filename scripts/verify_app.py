@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
+from qq_downloader import __version__
 from qq_downloader.music import MusicService
 from qq_downloader.storage import Storage
 from qq_downloader.window import Window
@@ -29,18 +30,19 @@ def wait_until(condition, description, timeout=55):
 
 
 def main():
-    (ROOT / "reports").mkdir(exist_ok=True)
+    reports = ROOT / "reports" / f"v{__version__}"
+    reports.mkdir(parents=True, exist_ok=True)
     app = create_app()
     storage = Storage()
     window = Window(storage, MusicService(storage))
-    window.folder = ROOT / "reports" / "audio"
+    window.folder = reports / "audio"
     window.update_folder()
     window.show()
-    report = {"version": "1.0.0", "source_ui": "started"}
+    report = {"version": __version__, "source_ui": "started"}
     try:
         assert storage.load_credential() is not None
         QTest.qWait(200)
-        assert window.grab().save(str(ROOT / "reports" / "UI-start.png"))
+        assert window.grab().save(str(reports / "UI-start.png"))
         window.query.setText("焦虑型依恋")
         QTest.keyClick(window.query, Qt.Key.Key_Return)
         wait_until(lambda: window.task is None, "Search did not finish")
@@ -55,7 +57,7 @@ def main():
         report["available_qualities"] = [quality.name for quality in window.qualities]
         report["search_results"] = len(window.songs)
         QTest.qWait(120)
-        assert window.grab().save(str(ROOT / "reports" / "UI-results.png"))
+        assert window.grab().save(str(reports / "UI-results.png"))
 
         for extension in (".flac", ".mp3"):
             available = next(i for i, quality in enumerate(window.qualities, 1) if quality.file_type.e == extension)
@@ -73,7 +75,7 @@ def main():
             }
             if extension == ".flac":
                 QTest.qWait(120)
-                assert window.grab().save(str(ROOT / "reports" / "UI-download.png"))
+                assert window.grab().save(str(reports / "UI-download.png"))
 
         window.quality.setCurrentIndex(0)
         QTest.mouseClick(window.download_button, Qt.MouseButton.LeftButton)
@@ -98,8 +100,8 @@ def main():
         report["encrypted_login"] = "loaded after QR cancellation"
         window.resize(window.minimumSize())
         QTest.qWait(200)
-        assert window.grab().save(str(ROOT / "reports" / "UI-compact.png"))
-        (ROOT / "reports" / "verification.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        assert window.grab().save(str(reports / "UI-compact.png"))
+        (reports / "verification.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps(report, ensure_ascii=False))
     finally:
         if window.dialog:

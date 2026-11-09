@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
+from . import __version__
 from .music import LoginRequired, MusicService, error_message
 from .storage import Storage
 from .theme import Hero, icon
@@ -112,6 +113,8 @@ class LoginDialog(QDialog):
         self.service = service
         self.task = None
         self.closing = False
+        self.refresh_requested = Event()
+        self.stop_requested = Event()
         self.setWindowTitle("登录 QQ 音乐")
         self.setFixedWidth(385)
         self.setModal(True)
@@ -142,20 +145,23 @@ class LoginDialog(QDialog):
 
     def request(self):
         if self.task:
-            self.task.cancel()
+            self.refresh_requested.set()
+            self.qr.setText("正在更新二维码…")
             self.refresh.setEnabled(False)
             self.state.setText("正在刷新二维码…")
             return
         self.qr.setText("正在获取二维码…")
         self.state.setText("正在连接 QQ 音乐…")
         self.refresh.setEnabled(False)
-        self.task = Task(self.service.qr_login, self)
+        self.task = Task(
+            lambda update: self.service.qr_login(update, self.refresh_requested, self.stop_requested), self
+        )
         self.task.update.connect(self.on_update)
         self.task.finished.connect(self.on_done)
         self.task.start()
 
     def on_update(self, kind, payload):
-        if self.closing or not self.task or self.task.stopping.is_set():
+        if self.closing or not self.task or self.refresh_requested.is_set():
             return
         if kind == "qr":
             pixmap = QPixmap()
@@ -176,8 +182,6 @@ class LoginDialog(QDialog):
             super().reject()
         elif task.result:
             self.accept()
-        elif task.stopping.is_set():
-            self.request()
         else:
             self.qr.setText("请刷新二维码")
             self.state.setText(error_message(task.error))
@@ -186,7 +190,9 @@ class LoginDialog(QDialog):
     def reject(self):
         if self.task:
             self.closing = True
-            self.task.cancel()
+            self.stop_requested.set()
+            self.refresh.setEnabled(False)
+            self.state.setText("正在关闭登录…")
         else:
             super().reject()
 
@@ -227,6 +233,8 @@ class Window(QMainWindow):
         self.shortcut.activated.connect(self.focus_search)
         self.update_folder()
         self.update_login()
+        if storage.load_credential() is None:
+            self.set_notice("首次使用请点右上角「扫码登录」，用自己的 QQ 确认授权。")
         self.sync_controls()
         self.query.setFocus()
 
@@ -239,7 +247,7 @@ class Window(QMainWindow):
         mark.setStyleSheet("background: #5345c7; border-radius: 11px;")
         row.addWidget(mark)
         row.addWidget(label("QQ 音乐下载器", "brand"))
-        row.addWidget(label("个人版 1.0", "version"))
+        row.addWidget(label(f"便携版 {__version__}", "version"))
         row.addStretch()
         self.login_state = label("", "small")
         row.addWidget(self.login_state)

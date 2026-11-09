@@ -14,7 +14,6 @@ PROJECT = Path(__file__).resolve().parents[2] if not getattr(sys, "frozen", Fals
 ROOT = PROJECT or Path(sys.executable).resolve().parent
 DATA = ROOT / "data"
 DOWNLOADS = ROOT / "downloads"
-TOOLS = ROOT / "runtime"
 
 
 class DataBlob(ctypes.Structure):
@@ -74,14 +73,14 @@ class Storage:
         payload = credential.model_dump_json(by_alias=True).encode("utf-8")
         atomic_write(self.credential_path, _crypt(payload, decrypt=False))
 
-    def download_folder(self) -> Path:
+    def download_folder(self, fallback: Path = DOWNLOADS) -> Path:
         try:
             folder = Path(json.loads(self.settings_path.read_text(encoding="utf-8"))["folder"])
             if folder.is_absolute():
                 return folder
         except (OSError, ValueError, TypeError, KeyError):
             pass
-        return DOWNLOADS
+        return fallback
 
     def set_download_folder(self, folder: Path) -> None:
         atomic_write(self.settings_path, json.dumps({"folder": str(folder)}, ensure_ascii=False).encode("utf-8"))

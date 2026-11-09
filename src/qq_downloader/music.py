@@ -1,9 +1,7 @@
 """Search QQ Music and save the selected recording as a verified original file."""
 
 import asyncio
-import json
 import re
-import subprocess
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -19,11 +17,13 @@ from qqmusic_api.core.exceptions import (
     CredentialExpiredError, CredentialInvalidError, CredentialRefreshError,
     LoginAuthExpiredError, NetworkError, RatelimitedError,
 )
+from qqmusic_api.core.transport import NiquestsTransport
 from qqmusic_api.models.login import QRCodeLoginEvents, QRLoginType
 from qqmusic_api.modules.search import SearchType
 from qqmusic_api.modules.song import SongFileInfo, SongFileType
 
-from .storage import TOOLS, Storage
+from .audio import AudioError, verify_audio
+from .storage import Storage
 
 
 def _snapshot(raw):
@@ -86,17 +86,12 @@ class LoginRequired(MusicError):
     pass
 
 
-class AudioError(MusicError):
-    pass
-
-
 LOGIN_EXPIRED = (CredentialExpiredError, CredentialInvalidError, LoginAuthExpiredError)
 
 
 class MusicService:
-    def __init__(self, storage: Storage, tools: Path = TOOLS):
+    def __init__(self, storage: Storage):
         self.storage = storage
-        self.tools = tools
 
     @asynccontextmanager
     async def _client(self, *, required=False):
@@ -176,14 +171,33 @@ class MusicService:
     async def qualities(self, song: Song) -> list[Quality]:
         return [source.quality for source in await self._sources(song)]
 
-    async def qr_login(self, update):
-        try:
-            self.storage.data.mkdir(parents=True, exist_ok=True)
-            async with asyncio.timeout(180), Client(device_path=str(self.storage.device_path)) as client:
+    async def qr_login(self, update, refresh, stop):
+        self.storage.data.mkdir(parents=True, exist_ok=True)
+        transport = NiquestsTransport(timeout=(5, 8))
+        async with Client(device_path=str(self.storage.device_path), transport=transport) as client:
+            while not stop.is_set():
+                refresh.clear()
                 qr = await client.login.get_qrcode(QRLoginType.QQ)
+                if stop.is_set():
+                    break
                 update("qr", qr.data)
-                while True:
-                    result = await client.login.check_qrcode(qr)
+                expires = time.monotonic() + 180
+                poll_at = time.monotonic() + 2
+                while not refresh.is_set() and not stop.is_set():
+                    now = time.monotonic()
+                    if now >= expires:
+                        raise MusicError("二维码已过期，请刷新二维码。")
+                    if now < poll_at:
+                        await asyncio.sleep(0.1)
+                        continue
+                    try:
+                        result = await client.login.check_qrcode(qr)
+                    except NetworkError:
+                        if refresh.is_set() or stop.is_set():
+                            break
+                        raise
+                    if refresh.is_set() or stop.is_set():
+                        break
                     if result.event == QRCodeLoginEvents.DONE:
                         if result.credential is None or not result.credential.is_valid():
                             raise MusicError("QQ 音乐未返回有效登录，请刷新二维码重试。")
@@ -194,9 +208,8 @@ class MusicService:
                     if result.event == QRCodeLoginEvents.REFUSE:
                         raise MusicError("已在手机上取消登录，可以刷新二维码重试。")
                     update("scan", result.event == QRCodeLoginEvents.CONF)
-                    await asyncio.sleep(2.5)
-        except TimeoutError:
-            raise MusicError("二维码已过期，请刷新二维码。") from None
+                    poll_at = time.monotonic() + 2.5
+        return False
 
     async def download(self, song: Song, requested: Quality | None, folder: Path, update) -> SavedAudio:
         update("status", "正在获取下载地址…")
@@ -205,8 +218,6 @@ class MusicService:
             sources = [source for source in sources if source.quality == requested]
         if not sources:
             raise MusicError("所选音质当前不可用，请重新查看音质列表。")
-        if not all((self.tools / tool).is_file() for tool in ("ffmpeg.exe", "ffprobe.exe")):
-            raise MusicError("音频校验组件缺失，请检查程序的 runtime 目录。")
         folder.mkdir(parents=True, exist_ok=True)
         timeout = aiohttp.ClientTimeout(total=None, connect=20, sock_read=25)
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -239,57 +250,12 @@ class MusicService:
                 output.close()
                 update("progress", (size, total or size))
                 update("status", "正在校验音频完整性…")
-                metadata = await self._verify(temporary, quality.file_type.e, song.seconds)
-                stream = metadata["streams"][0]
-                duration = float(metadata["format"]["duration"])
-                raw_bits = str(stream.get("bits_per_raw_sample", ""))
-                bits = int(raw_bits) if raw_bits.isdigit() else 0
+                audio = await verify_audio(temporary, quality.file_type.e, song.seconds)
                 target = _save_without_overwrite(temporary, folder, song, quality.file_type.e)
-                return SavedAudio(target, quality, size, duration, int(stream["sample_rate"]), bits)
+                return SavedAudio(target, quality, size, audio.seconds, audio.sample_rate, audio.bits)
             finally:
                 output.close()
                 temporary.unlink(missing_ok=True)
-
-    async def _verify(self, path: Path, extension: str, expected_seconds: int) -> dict:
-        info = await _media_tool(
-            self.tools / "ffprobe.exe", "-v", "error", "-select_streams", "a:0", "-show_entries",
-            "stream=codec_name,sample_rate,bits_per_raw_sample:format=duration,format_name", "-of", "json", path,
-        )
-        try:
-            metadata = json.loads(info)
-            stream = metadata["streams"][0]
-            details = metadata["format"]
-            expected_codec = extension.removeprefix(".")
-            duration = float(details["duration"])
-            if (
-                stream["codec_name"] != expected_codec or details["format_name"] != expected_codec
-                or int(stream["sample_rate"]) <= 0 or duration <= 0
-                or (expected_seconds > 0 and abs(duration - expected_seconds) > 4)
-            ):
-                raise AudioError("下载内容与所选格式或歌曲时长不符。")
-        except (ValueError, KeyError, IndexError, TypeError):
-            raise AudioError("下载内容没有有效音轨。") from None
-        await _media_tool(self.tools / "ffmpeg.exe", "-v", "error", "-xerror", "-nostdin", "-i", path, "-map", "0:a:0", "-f", "null", "-")
-        return metadata
-
-
-async def _media_tool(*args):
-    process = await asyncio.create_subprocess_exec(
-        *map(str, args), stdin=asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-        creationflags=subprocess.CREATE_NO_WINDOW,
-    )
-    try:
-        output, _ = await asyncio.wait_for(process.communicate(), 120)
-    except BaseException:
-        if process.returncode is None:
-            process.kill()
-        await process.wait()
-        raise
-    if process.returncode:
-        raise AudioError("音频校验失败。")
-    return output
-
 
 def _save_without_overwrite(temporary: Path, folder: Path, song: Song, extension: str) -> Path:
     stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", f"{song.name} - {song.artists}")[:135].strip(" .") or "QQ Music"
