@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from qq_downloader import __version__
 
 
-BUNDLE = ROOT / "build" / "stage-v2" / "QQMusicDownloader"
+BUNDLE = ROOT / "build" / f"stage-v{__version__}" / "QQMusicDownloader"
 DIST = ROOT / "dist" / "v2-share"
 PREFIX = f"QQMusicDownloader-v{__version__}"
 PRIVATE_NAMES = re.compile(r"(?i)(^\.env(?:\.|$)|credential|qqmusic_device|running\.lock|\.(?:dpapi|flac|mp3|part)$)")

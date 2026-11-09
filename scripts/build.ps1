@@ -6,7 +6,10 @@ $env:TMP = $env:TEMP
 $env:PIP_CACHE_DIR = Join-Path $project '.cache\pip'
 $env:PYINSTALLER_CONFIG_DIR = Join-Path $project '.cache\pyinstaller'
 $python = Join-Path $project '.venv\Scripts\python.exe'
-$staging = Join-Path $project 'build\stage-v2'
+$versionLine = Select-String -LiteralPath 'src\qq_downloader\__init__.py' -Pattern '^__version__ = "(\d+\.\d+\.\d+)"$'
+if (-not $versionLine) { throw 'Unable to read the application version.' }
+$version = $versionLine.Matches[0].Groups[1].Value
+$staging = Join-Path $project "build\stage-v$version"
 $bundle = Join-Path $staging 'QQMusicDownloader'
 
 # PyInstaller replaces its own staging tree. Refuse redirects outside the project.
@@ -26,7 +29,7 @@ $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$basePython"
 if ($LASTEXITCODE -ne 0) { throw 'Icon build failed.' }
 & $python -X utf8 -m PyInstaller --noconfirm --onedir --windowed --noupx `
     --name QQMusicDownloader --icon $icon --distpath $staging `
-    --workpath build\pyinstaller-v2 --specpath build --paths src src\qq_music_app.py
+    --workpath "build\pyinstaller-v$version" --specpath build --paths src src\qq_music_app.py
 if ($LASTEXITCODE -ne 0) { throw 'Application build failed.' }
 
 $internal = Join-Path $bundle '_internal'

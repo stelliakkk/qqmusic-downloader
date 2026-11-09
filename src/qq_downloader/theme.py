@@ -14,6 +14,10 @@ GLYPHS = {
     "person": '<circle cx="12" cy="8" r="3"/><path d="M5 19c0-6 14-6 14 0"/>',
     "refresh": '<path d="M20 7v5h-5M20 12a8 8 0 1 0-2 5"/>',
     "chevron": '<path d="m7 10 5 5 5-5"/>',
+    "list": '<path d="M8 6h12M8 12h12M8 18h12M4 6h.1M4 12h.1M4 18h.1"/>',
+    "history": '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>',
+    "settings": '<path d="M4 7h16M4 17h16M8 4v6m8 4v6"/>',
+    "link": '<path d="m10 14 4-4m-5 6-1 1a3.5 3.5 0 0 1-5-5l4-4a3.5 3.5 0 0 1 5 0m0 8a3.5 3.5 0 0 0 5 0l4-4a3.5 3.5 0 0 0-5-5l-1 1"/>',
 }
 
 
@@ -66,9 +70,18 @@ QLabel#small { color: #625e77; font-size: 12px; }
 QLabel#foot { color: #68637d; font-size: 12px; }
 QLabel#folder { color: #4c4768; font-size: 12px; }
 QLabel#badge { color: #5145b8; background: #f0edff; border-radius: 9px; padding: 4px 8px; font-size: 11px; }
+QLabel#tabNote { color: #625e77; font-size: 12px; }
+QFrame#batchBar { background: #f8f6fe; border-radius: 10px; }
+QTabWidget::pane { border: 0; margin-top: 9px; }
+QTabBar::tab { color: #5b5572; background: #f6f4fb; border: 1px solid #f6f4fb; border-radius: 8px; padding: 7px 12px; margin-right: 5px; }
+QTabBar::tab:hover { color: #3c2fa5; background: #f0ecff; }
+QTabBar::tab:selected { color: #4938b5; background: #eeeaff; border-color: #e0d8fb; font-weight: 700; }
+QTabBar::tab:focus { border-color: #6557e0; }
+QCheckBox { color: #4e4767; spacing: 7px; }
 QLabel#notice { color: #5145ad; background: #f1eeff; border-radius: 10px; padding: 10px 12px; }
 QLabel#notice[tone='error'] { color: #8e3044; background: #fceff1; }
 QLabel#notice[tone='success'] { color: #23684a; background: #e9f7ef; }
+QLabel#notice[tone='warning'] { color: #725010; background: #fff4da; }
 QFrame#hero { background: #eeecff; border: 1px solid #e3dfff; border-radius: 18px; }
 QFrame#surface { background: white; border: 1px solid #e7e5f1; border-radius: 15px; }
 QFrame#trackTile { background: #f6f4fe; border-radius: 11px; }

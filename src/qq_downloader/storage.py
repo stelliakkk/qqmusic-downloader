@@ -60,6 +60,7 @@ class Storage:
         self.credential_path = data / "qqmusic_credential.dpapi"
         self.device_path = data / "qqmusic_device.json"
         self.settings_path = data / "settings.json"
+        self.workspace_path = data / "workspace.json"
 
     def load_credential(self) -> Credential | None:
         try:
@@ -75,7 +76,7 @@ class Storage:
 
     def download_folder(self, fallback: Path = DOWNLOADS) -> Path:
         try:
-            folder = Path(json.loads(self.settings_path.read_text(encoding="utf-8"))["folder"])
+            folder = Path(self.read_object(self.settings_path)["folder"])
             if folder.is_absolute():
                 return folder
         except (OSError, ValueError, TypeError, KeyError):
@@ -83,4 +84,19 @@ class Storage:
         return fallback
 
     def set_download_folder(self, folder: Path) -> None:
-        atomic_write(self.settings_path, json.dumps({"folder": str(folder)}, ensure_ascii=False).encode("utf-8"))
+        self.set_preferences(folder=str(folder))
+
+    def set_preferences(self, **changes) -> None:
+        self.write_object(self.settings_path, self.read_object(self.settings_path) | changes)
+
+    @staticmethod
+    def read_object(path: Path) -> dict:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+            return value if isinstance(value, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    @staticmethod
+    def write_object(path: Path, value: dict) -> None:
+        atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2).encode("utf-8"))
