@@ -1,0 +1,15 @@
+/.venv/
+/.cache/
+__pycache__/
+*.py[cod]
+/build/
+/dist/
+/data/
+/downloads/
+/reports/
+/runtime/*
+!/runtime/README.md
+.env
+.env.*
+*.dpapi
+*.part

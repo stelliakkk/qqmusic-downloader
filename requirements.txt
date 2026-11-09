@@ -1,0 +1,5 @@
+qqmusic-api-python==0.8.2
+niquests==3.21.2
+aiohttp==3.13.5
+PySide6-Essentials==6.12.0
+PyInstaller==6.22.3
